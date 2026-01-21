@@ -30,6 +30,8 @@ if __name__ == '__main__':
     parser = get_argument_parser('Run Band tests for specific target platform')
     parser.add_argument('-f', '--filter', default="",
                         help='Run specific test that contains given string (only for android)')
+    parser.add_argument('--build_only', action='store_true',
+                    help='Only build targets; skip adb push/run and cleanup.')
     args = parser.parse_args()
 
     if args.opencl:
@@ -41,54 +43,64 @@ if __name__ == '__main__':
         clean_bazel(args.docker)
     
     if args.android:
-        device_connection_flag = get_adb_devices()
-        # check if the android device is connected
-        assert device_connection_flag
-        device_connection_flag = device_connection_flag[0]
+        device_connection_flag = None
+
+        if not args.build_only:
+            device_connection_flag = get_adb_devices()
+            # check if the android device is connected
+            assert device_connection_flag
+            device_connection_flag = device_connection_flag[0]
 
         build_cmd = make_cmd(
-                build_only=True,
-                debug=args.debug,
-                trace=args.trace,   
-                platform='android',
-                backend=args.backend,
-                target=TARGET,
-                nvidia_opencl=args.opencl
-            )
+            build_only=args.build_only,   # 这里不要写死 True
+            debug=args.debug,
+            trace=args.trace,
+            platform='android',
+            backend=args.backend,
+            target=TARGET,
+            nvidia_opencl=args.opencl
+        )
+
         subprocess.call(['mkdir', '-p', get_target(args.debug)])
         if args.docker:
             run_cmd_docker(build_cmd)
             copy_docker(f'bazel-bin/band/test', get_target(args.debug))
         else:
             run_cmd(build_cmd)
-            copy(f'bazel-bin/band/test', get_target(args.debug))
+            if not args.build_only:
+                copy(f'bazel-bin/band/test', get_target(args.debug))
+            else:
+                print("[BUILD_ONLY] Use bazel-bin outputs; skip copy.")
 
-        temp_dir_name = next(tempfile._get_candidate_names())
-        print("Copy test data to device")
-        push_to_android('band/test', f'{temp_dir_name}/band/test', device_connection_flag)
-        for test_file in os.listdir(get_target(args.debug, 'test')):
-            if args.filter != "":
-                if args.filter not in test_file:
+        if not args.build_only:
+            temp_dir_name = next(tempfile._get_candidate_names())
+            print("Copy test data to device")
+            push_to_android('band/test', f'{temp_dir_name}/band/test', device_connection_flag)
+
+            for test_file in os.listdir(get_target(args.debug, 'test')):
+                if args.filter != "" and args.filter not in test_file:
                     continue
-            # Check whether the given path is binary and file
-            if not '.' in test_file and os.path.isfile(get_target(args.debug, f'test/{test_file}')):
-                print(f'-----------TEST : {test_file}-----------')
-                push_to_android(
-                    get_target(args.debug, f'test/{test_file}'), temp_dir_name, device_connection_flag)
-                run_binary_android(f'{temp_dir_name}/', f'{test_file}', device_connection_flag)
+                if ('.' not in test_file and
+                    os.path.isfile(get_target(args.debug, f'test/{test_file}'))):
+                    print(f'-----------TEST : {test_file}-----------')
+                    push_to_android(get_target(args.debug, f'test/{test_file}'),
+                                    temp_dir_name, device_connection_flag)
+                    run_binary_android(f'{temp_dir_name}/', f'{test_file}', device_connection_flag)
 
-        print("Clean up test/temporal directory from device and local")
-        run_cmd(
-            f'adb {device_connection_flag} shell rm -r /data/local/tmp/{temp_dir_name}')
-        run_cmd(f'rm -rf {get_target(args.debug)}')
+            print("Clean up test/temporal directory from device and local")
+            run_cmd(f'adb {device_connection_flag} shell rm -r /data/local/tmp/{temp_dir_name}')
+            run_cmd(f'rm -rf {get_target(args.debug)}')
+        else:
+            print(f"[BUILD_ONLY] Build outputs kept at: {get_target(args.debug)}")
+
     else:
         cmd = make_cmd(
-                args.build, 
-                args.debug,
-                args.trace,
-                get_platform(),
-                args.backend, 
-                TARGET,
-                args.opencl
-            )
+            args.build,
+            args.debug,
+            args.trace,
+            get_platform(),
+            args.backend,
+            TARGET,
+            args.opencl
+        )
         run_cmd(cmd)

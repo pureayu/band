@@ -27,7 +27,12 @@
 #include "band/scheduler/round_robin_scheduler.h"
 #include "band/scheduler/shortest_expected_latency_scheduler.h"
 #include "band/time.h"
-
+#ifdef BAND_TRACE_SCHED
+#include <cstdio>
+#define BAND_TRACEF(...) do { std::fprintf(stderr, __VA_ARGS__); std::fprintf(stderr, "\n"); } while (0)
+#else
+#define BAND_TRACEF(...) do {} while (0)
+#endif
 namespace band {
 
 Planner::Planner(IEngine& engine) : num_submitted_jobs_(0), engine_(engine) {
@@ -324,8 +329,22 @@ bool Planner::EnqueueToWorker(const std::vector<ScheduleAction>& actions) {
     SubgraphKey target_key;
 
     std::tie(job, target_key) = action;
+    #ifdef BAND_TRACE_SCHED
+    BAND_TRACEF("[TRACE][Plan->Enqueue] job_id=%d model_id=%d slo_us=%lld expected_exec=%lld enqueue_t=%lld -> worker_id=%d unit_mask=0x%016llx",
+                job.job_id,
+                job.model_id,
+                (long long)job.slo_us,
+                (long long)job.expected_execution_time,
+                (long long)job.enqueue_time,
+                (int)target_key.GetWorkerId(),
+                (unsigned long long)target_key.GetUnitIndices().to_ullong());
+    #endif
 
     Worker* worker = engine_.GetWorker(target_key.GetWorkerId());
+    #ifdef BAND_TRACE_SCHED
+    BAND_TRACEF("[TRACE][Engine.GetWorker] worker_id=%d ptr=%p",
+                (int)target_key.GetWorkerId(), (void*)worker);
+    #endif  
     if (worker == nullptr) {
       BAND_LOG(LogSeverity::kError,
                "EnqueueToWorker failed. Requests scheduled to null worker "

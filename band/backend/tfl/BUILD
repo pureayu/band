@@ -46,6 +46,7 @@ band_cc_library(
         "@org_tensorflow//tensorflow/lite:framework",
         "@org_tensorflow//tensorflow/lite/c:c_api",
         "@org_tensorflow//tensorflow/lite/c:c_api_experimental",
+        "@qnn_sdk_libs//:qnn_sdk_includes",
     ] + select({
         "//band:android": [
             "@org_tensorflow//tensorflow/lite/delegates/gpu:delegate",
@@ -60,4 +61,5 @@ band_cc_library(
         ],
         "//conditions:default": [],
     }),
+    linkopts = ["-ldl"],
 )

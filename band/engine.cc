@@ -564,6 +564,10 @@ absl::Status Engine::Init(const RuntimeConfig& config) {
                ToString(device_flag));
       worker->Start();
       workers_.push_back(std::move(worker));
+       BAND_LOG(LogSeverity::kInfo, "Worker created: id=%d device=%s",
+               workers_.back()->GetId(), ToString(device_flag));
+      fprintf(stderr, "[DBG][Engine.Init] Worker created: id=%d device=%s\n",
+              workers_.back()->GetId(), ToString(device_flag));
       workers_waiting_[i] = 0;
       BAND_TRACER_ADD_WORKER(device_flag, workers_.back()->GetId());
     } else {
