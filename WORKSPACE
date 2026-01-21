@@ -4,7 +4,18 @@ load("//band:workspace_repo.bzl", "workspace_repo")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 workspace_repo()
-
+new_local_repository(
+    name = "qnn_sdk_libs",
+    path = "/home/quyu/qairt/2.39.0.250926",
+    build_file_content = """
+cc_library(
+    name = "qnn_sdk_includes",
+    hdrs = glob(["include/**/*.h"]),
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
+""",
+)
 # Note: This repo should lie here to respect TensorFlow's build dependency.
 http_archive(
     name = "org_tensorflow",
