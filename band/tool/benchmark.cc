@@ -539,40 +539,61 @@ absl::Status Benchmark::LogResults() {
     PrintLine("SLO scale", model_config.slo_scale, 2);
   }
 
-  auto print_profiler = [](const std::string& prefix,
-                           const BenchmarkProfiler& profiler,
-                           const ModelConfig* model_config = nullptr) {
-    const double batch_size = model_config ? model_config->batch_size : 1;
-    double average_ms =
-        (profiler.GetAverageElapsedTime<std::chrono::milliseconds>() /
-         batch_size);
-    double average_fps = 1000 / average_ms;
+  auto print_profiler =
+      [running_time_ms = benchmark_config_.running_time_ms](
+          const std::string& prefix, const BenchmarkProfiler& profiler,
+          const ModelConfig* model_config = nullptr) {
+        const double batch_size = model_config ? model_config->batch_size : 1;
+        const double wall_s =
+            std::max(1e-9, static_cast<double>(running_time_ms) / 1000.0);
 
-    PrintHeader("Result - " + prefix);
-    PrintLine("# Processed requests", profiler.GetNumEvents() * batch_size, 1);
-    PrintLine("Avg. Latency (ms)", average_ms, 1);
-    PrintLine("Avg. FPS", average_fps, 1);
-    PrintLine("Total # requests", profiler.GetNumEvents() * batch_size, 1);
-    PrintLine("Total # canceled requests",
-              profiler.GetNumCanceledEvents() * batch_size, 1);
+        const double num_total = profiler.GetNumEvents() * batch_size;
+        const double num_canceled = profiler.GetNumCanceledEvents() * batch_size;
+        const double num_completed =
+            (profiler.GetNumEvents() - profiler.GetNumCanceledEvents()) *
+            batch_size;
 
-    if (model_config && model_config->slo_us > 0) {
-      double slo_satisfactory_count = 0;
-      for (size_t i = 0; i < profiler.GetNumEvents(); i++) {
-        if (!profiler.IsEventCanceled(i) &&
-            profiler.GetElapsedTimeAt<std::chrono::microseconds>(i) <
-                model_config->slo_us) {
-          slo_satisfactory_count++;
+        double average_ms =
+            (profiler.GetAverageElapsedTime<std::chrono::milliseconds>() /
+             batch_size);
+        double fps_equiv = (average_ms > 0) ? 1000.0 / average_ms : 0.0;
+
+        PrintHeader("Result - " + prefix);
+        PrintLine("# Completed requests", num_completed, 1);
+        PrintLine("Real Throughput (completed req/s)", num_completed / wall_s, 1);
+        PrintLine("# Arrived requests", num_total, 1);
+        PrintLine("Arrival Rate (arrived req/s)", num_total / wall_s, 1);
+        PrintLine("Avg. Latency (ms)", average_ms, 1);
+        PrintLine("FPS (1/Avg Latency)", fps_equiv, 1);
+        PrintLine("Total # canceled requests", num_canceled, 1);
+
+        if (model_config && model_config->slo_us > 0) {
+          double slo_satisfactory_count = 0;
+          for (size_t i = 0; i < profiler.GetNumEvents(); i++) {
+            if (!profiler.IsEventCanceled(i) &&
+                profiler.GetElapsedTimeAt<std::chrono::microseconds>(i) <
+                    model_config->slo_us) {
+              slo_satisfactory_count++;
+            }
+          }
+
+          double num_completed_events =
+              profiler.GetNumEvents() - profiler.GetNumCanceledEvents();
+          double num_total_events = profiler.GetNumEvents();
+
+          // Band 原始口径：只在“完成的请求”里统计是否 < SLO
+          if (num_completed_events > 0) {
+            PrintLine("SLO Satisfaction (completed-only) (%)",
+                      slo_satisfactory_count / num_completed_events * 100, 1);
+          }
+
+          // 更严格/更可比的口径：以“到达的请求”为分母（取消/丢弃视为失败）
+          if (num_total_events > 0) {
+            PrintLine("SLO Satisfaction (arrived-based) (%)",
+                      slo_satisfactory_count / num_total_events * 100, 1);
+          }
         }
-      }
-
-      double num_events =
-          profiler.GetNumEvents() - profiler.GetNumCanceledEvents();
-
-      PrintLine("SLO Satisfactory Rate (%)",
-                slo_satisfactory_count / num_events * 100, 1);
-    }
-  };
+      };
 
   if (global_profiler_.GetNumEvents() > 0) {
     print_profiler("Global", global_profiler_);

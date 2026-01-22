@@ -282,10 +282,15 @@ ModelAnalyzer::CreateSubgraphs() {
           : SummarizeFallbackPerWorkerSubgraphs(unit_subgraph_defs,
                                                 subgraph_defs);
 
-  BAND_LOG_DEBUG("Create %d subgraphs for model %s with mode %s %s",
-                 subgraph_defs.size(), model_spec_->path.c_str(),
-                 ToString(subgraph_config_.subgraph_preparation_type),
-                 subgraph_summary.c_str());
+  // BAND_LOG_DEBUG("Create %d subgraphs for model %s with mode %s %s",
+  //                subgraph_defs.size(), model_spec_->path.c_str(),
+  //                ToString(subgraph_config_.subgraph_preparation_type),
+  //                subgraph_summary.c_str());
+  printf("Create %zu subgraphs for model %s with mode %s %s\n",
+       subgraph_defs.size(),
+       model_spec_->path.c_str(),
+       ToString(subgraph_config_.subgraph_preparation_type),
+       subgraph_summary.c_str());               
 
   return std::make_pair(*model_spec_, subgraph_defs);
 }

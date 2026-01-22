@@ -210,6 +210,32 @@ void Worker::Work() {
         // end_time is never read/written by any other thread as long as
         // is_busy == true, so it's safe to update it w/o grabbing the lock
         current_job->end_time = time::NowMicros();
+
+        // ---------- Debug: per-job timing on GPU ----------
+        // Prints enqueue->invoke (wait), invoke->end (run), enqueue->end (e2e).
+        // SLO-based jobs are treated as URGENT in this benchmark tool.
+        if (device_flag_ == DeviceFlag::kGPU && current_job->slo_us > 0) {
+          const double wait_ms =
+              (current_job->invoke_time - current_job->enqueue_time) / 1000.0;
+          const double run_ms =
+              (current_job->end_time - current_job->invoke_time) / 1000.0;
+          const double e2e_ms =
+              (current_job->end_time - current_job->enqueue_time) / 1000.0;
+          const double slo_ms = current_job->slo_us / 1000.0;
+          std::cout << "[GPU][URGENT] job=" << current_job->job_id
+                    << " model=" << current_job->model_fname.c_str()
+                    << " subgraph=" << current_job->subgraph_key.ToString().c_str()
+                    << " Wait=" << wait_ms << "ms Run=" << run_ms
+                    << "ms E2E=" << e2e_ms << "ms SLO=" << slo_ms << "ms"
+                    << std::endl;
+          // BAND_LOG(LogSeverity::kInfo,
+          //          "[GPU][URGENT] job=%d model=%s subgraph=%s "
+          //          "Wait=%.3fms Run=%.3fms E2E=%.3fms SLO=%.3fms",
+          //          current_job->job_id, current_job->model_fname.c_str(),
+          //          current_job->subgraph_key.ToString().c_str(), wait_ms, run_ms,
+          //          e2e_ms, slo_ms);
+        }
+
         engine_->UpdateLatency(
             subgraph_key, (current_job->end_time - current_job->invoke_time));
         if (current_job->following_jobs.size() != 0) {
